@@ -20,6 +20,7 @@ from .declarative import (
     RunSpec,
     RunSummary,
 )
+from .models import GetRecordsResponse
 
 EventSink = Callable[[RunEvent], Awaitable[None]]
 
@@ -30,6 +31,15 @@ def _chunk(records: list[dict], chunk_size: int) -> list[list[dict]]:
 
 class RecordsAPI(Protocol):
     async def add_records(self, app: int, records: list[dict]) -> object: ...
+
+    async def get_records(
+        self,
+        app: int,
+        *,
+        query: str | None = None,
+        fields: list[str] | None = None,
+        total_count: bool = False,
+    ) -> GetRecordsResponse: ...
 
     async def update_records(
         self,
@@ -124,6 +134,86 @@ class LocalRunner:
         emit: EventSink,
         limiter: AsyncLimiter | None,
     ) -> None:
+        if operation.mode is RecordWriteMode.QUERY:
+            await emit(
+                RunEvent.now(
+                    run_id=run_id,
+                    type="operation_started",
+                    operation_index=operation_index,
+                    total_chunks=1,
+                    data={"app": operation.app, "mode": operation.mode.value},
+                )
+            )
+            query_errors: list[str] = []
+
+            async def _query() -> None:
+                try:
+                    if limiter is not None:
+                        async with limiter:
+                            page = await self._runtime.records.get_records(
+                                operation.app,
+                                query=operation.query,
+                                fields=operation.fields,
+                                total_count=operation.total_count,
+                            )
+                    else:
+                        page = await self._runtime.records.get_records(
+                            operation.app,
+                            query=operation.query,
+                            fields=operation.fields,
+                            total_count=operation.total_count,
+                        )
+                    summary.succeeded_chunks += 1
+                    summary.succeeded_records += len(page.records)
+                    event = RunEvent.now(
+                        run_id=run_id,
+                        type="chunk_succeeded",
+                        operation_index=operation_index,
+                        chunk_index=0,
+                        total_chunks=1,
+                        data={
+                            "records": len(page.records),
+                            "totalCount": page.totalCount,
+                        },
+                    )
+                    await emit(event)
+                    self._append_event_log(event_log, event)
+                    self._mark_chunk(db_path, run_id, operation_index, 0, "ok", None)
+                except Exception as exc:
+                    summary.failed_chunks += 1
+                    query_errors.append(str(exc))
+                    event = RunEvent.now(
+                        run_id=run_id,
+                        type="chunk_failed",
+                        operation_index=operation_index,
+                        chunk_index=0,
+                        total_chunks=1,
+                        error=str(exc),
+                    )
+                    await emit(event)
+                    self._append_event_log(event_log, event)
+                    self._mark_chunk(db_path, run_id, operation_index, 0, "ng", str(exc))
+                    if not operation.continue_on_error:
+                        raise
+
+            await _query()
+
+            if query_errors and not operation.continue_on_error:
+                summary.failed_operations += 1
+                msg = f"operation {operation_index} failed: {query_errors[0]}"
+                raise RuntimeError(msg)
+
+            await emit(
+                RunEvent.now(
+                    run_id=run_id,
+                    type="operation_finished",
+                    operation_index=operation_index,
+                    total_chunks=1,
+                    data={"errors": len(query_errors)},
+                )
+            )
+            return
+
         chunks = _chunk(operation.records, operation.chunk_size)
         total_chunks = len(chunks)
         await emit(

@@ -5,13 +5,14 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RecordWriteMode(StrEnum):
     INSERT = "insert"
     UPDATE = "update"
     UPSERT = "upsert"
+    QUERY = "query"
 
 
 class ExecutionBackend(StrEnum):
@@ -29,11 +30,26 @@ class RecordOperationSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     app: int
-    records: list[dict[str, Any]]
+    records: list[dict[str, Any]] = Field(default_factory=list)
     mode: RecordWriteMode = RecordWriteMode.UPSERT
+    query: str | None = None
+    fields: list[str] | None = None
+    total_count: bool = False
     chunk_size: int = Field(default=100, ge=1, le=100)
     concurrency: int = Field(default=5, ge=1, le=100)
     continue_on_error: bool = False
+
+    @model_validator(mode="after")
+    def _records_match_mode(self) -> RecordOperationSpec:
+        if self.mode is RecordWriteMode.QUERY:
+            if self.records:
+                msg = "QUERY mode does not use records; pass query/fields instead"
+                raise ValueError(msg)
+            return self
+        if not self.records:
+            msg = "write modes require at least one record in records"
+            raise ValueError(msg)
+        return self
 
 
 class RunSpec(BaseModel):

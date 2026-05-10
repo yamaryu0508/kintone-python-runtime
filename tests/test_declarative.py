@@ -66,6 +66,46 @@ async def test_run_spec_local_upsert(api, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_spec_local_query(api, tmp_path):
+    api.get("/k/v1/records.json").mock(
+        return_value=httpx.Response(
+            200,
+            json={"records": [{"$id": {"value": "1"}}], "totalCount": "42"},
+        )
+    )
+    spec = RunSpec(
+        backend=ExecutionBackend.LOCAL,
+        operations=[
+            RecordOperationSpec(
+                app=7,
+                mode=RecordWriteMode.QUERY,
+                query="order by $id asc limit 10",
+                fields=["$id"],
+                total_count=True,
+            )
+        ],
+    )
+    with api:
+        async with KintoneRuntime(
+            BASE,
+            auth=ApiTokenAuth(token="t"),
+            state_dir=str(tmp_path),
+        ) as runtime:
+            handle = runtime.run(spec)
+            events = [event async for event in handle.events()]
+            summary = await handle.wait()
+
+    assert summary.succeeded_chunks == 1
+    assert summary.succeeded_records == 1
+    assert summary.failed_chunks == 0
+    chunk_ok = [e for e in events if e.type == "chunk_succeeded"]
+    assert len(chunk_ok) == 1
+    assert chunk_ok[0].data is not None
+    assert chunk_ok[0].data.get("records") == 1
+    assert chunk_ok[0].data.get("totalCount") == "42"
+
+
+@pytest.mark.asyncio
 async def test_run_spec_redis_requires_url(tmp_path):
     spec = RunSpec(
         backend=ExecutionBackend.REDIS,

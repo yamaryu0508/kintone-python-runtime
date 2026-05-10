@@ -1,1 +1,0 @@
-simple_http_client @ git+https://github.com/yamaryu0508/simple-http-client

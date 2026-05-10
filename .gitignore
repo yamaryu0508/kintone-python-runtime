@@ -63,6 +63,7 @@ target/
 
 .env
 venv/
+.venv/
 .python-version
 cleanup.sh
 *_example.py

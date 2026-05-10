@@ -7,7 +7,7 @@ import respx
 from kintone_python_runtime import (
     ApiTokenAuth,
     ExecutionBackend,
-    KintoneClient,
+    KintoneRuntime,
     RecordOperationSpec,
     RecordWriteMode,
     RunSpec,
@@ -47,12 +47,12 @@ async def test_run_spec_local_upsert(api, tmp_path):
         ],
     )
     with api:
-        async with KintoneClient(
+        async with KintoneRuntime(
             BASE,
             auth=ApiTokenAuth(token="t"),
             state_dir=str(tmp_path),
-        ) as client:
-            handle = client.run(spec)
+        ) as runtime:
+            handle = runtime.run(spec)
             events = [event async for event in handle.events()]
             summary = await handle.wait()
 
@@ -77,10 +77,10 @@ async def test_run_spec_redis_requires_url(tmp_path):
             )
         ],
     )
-    async with KintoneClient(
+    async with KintoneRuntime(
         BASE,
         auth=ApiTokenAuth(token="t"),
         state_dir=str(tmp_path),
-    ) as client:
+    ) as runtime:
         with pytest.raises(ValueError, match="redis_url"):
-            client.run(spec)
+            runtime.run(spec)

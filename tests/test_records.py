@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from kintone_python_runtime import ApiTokenAuth, KintoneAPIError, KintoneClient
+from kintone_python_runtime import ApiTokenAuth, KintoneAPIError, KintoneRuntime
 
 BASE = "https://example.cybozu.com"
 
@@ -20,8 +20,8 @@ async def test_get_records_empty(api):
         return_value=httpx.Response(200, json={"records": []})
     )
     with api:
-        async with KintoneClient(BASE, auth=ApiTokenAuth(token="tok")) as client:
-            r = await client.records.get_records(42, query='f = "x"', fields=["a", "b"])
+        async with KintoneRuntime(BASE, auth=ApiTokenAuth(token="tok")) as runtime:
+            r = await runtime.records.get_records(42, query='f = "x"', fields=["a", "b"])
         assert r.records == []
         sent = route.calls.last.request
     assert sent.method == "GET"
@@ -35,12 +35,12 @@ async def test_guest_space_path(api):
         return_value=httpx.Response(200, json={"records": []})
     )
     with api:
-        async with KintoneClient(
+        async with KintoneRuntime(
             BASE,
             auth=ApiTokenAuth(token="tok"),
             guest_space_id=7,
-        ) as client:
-            await client.records.get_records(1)
+        ) as runtime:
+            await runtime.records.get_records(1)
         assert route.calls.last.request.url.path == "/k/guest/7/v1/records.json"
 
 
@@ -53,9 +53,9 @@ async def test_kintone_error_message(api):
         )
     )
     with api:
-        async with KintoneClient(BASE, auth=ApiTokenAuth(token="t")) as client:
+        async with KintoneRuntime(BASE, auth=ApiTokenAuth(token="t")) as runtime:
             with pytest.raises(KintoneAPIError) as exc:
-                await client.records.get_records(1)
+                await runtime.records.get_records(1)
     assert exc.value.status_code == 400
     assert "invalid" in str(exc.value)
 
@@ -74,8 +74,8 @@ async def test_iterate_records_pages(api):
 
     api.get("/k/v1/records.json").mock(side_effect=side_effect)
     with api:
-        async with KintoneClient(BASE, auth=ApiTokenAuth(token="t")) as client:
-            rows = [r async for r in client.records.iterate_records_by_id(9)]
+        async with KintoneRuntime(BASE, auth=ApiTokenAuth(token="t")) as runtime:
+            rows = [r async for r in runtime.records.iterate_records_by_id(9)]
     assert len(rows) == 501
 
 
@@ -86,10 +86,10 @@ async def test_add_and_update_record(api):
     )
     api.put("/k/v1/record.json").mock(return_value=httpx.Response(200, json={"revision": "3"}))
     with api:
-        async with KintoneClient(BASE, auth=ApiTokenAuth(token="t")) as client:
-            a = await client.records.add_record(1, {"Name": {"value": "x"}})
+        async with KintoneRuntime(BASE, auth=ApiTokenAuth(token="t")) as runtime:
+            a = await runtime.records.add_record(1, {"Name": {"value": "x"}})
             assert a.id == "1"
-            u = await client.records.update_record(1, 10, {"Name": {"value": "y"}}, revision=2)
+            u = await runtime.records.update_record(1, 10, {"Name": {"value": "y"}}, revision=2)
             assert u.revision == "3"
 
 
@@ -107,9 +107,9 @@ async def test_add_records_chunked(api):
 
     api.post("/k/v1/records.json").mock(side_effect=capture)
     with api:
-        async with KintoneClient(BASE, auth=ApiTokenAuth(token="t")) as client:
+        async with KintoneRuntime(BASE, auth=ApiTokenAuth(token="t")) as runtime:
             records = [{"x": {"value": str(i)}} for i in range(150)]
-            r = await client.records.add_records_chunked(5, records, chunk_size=100, concurrency=2)
+            r = await runtime.records.add_records_chunked(5, records, chunk_size=100, concurrency=2)
     assert len(r.ids) == 150
     assert len(bodies) == 2
     assert len(bodies[0]["records"]) == 100

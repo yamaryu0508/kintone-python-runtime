@@ -19,7 +19,7 @@
 | 認証 | API トークン（`X-Cybozu-API-Token`） |
 | レコード | 取得・カーソル逐次取得・追加・更新・宣言的バッチ実行（insert/update/upsert） |
 | ファイル | アップロード（multipart）・`fileKey` によるダウンロード |
-| マルチテナント | **サブドメイン（ドメイン）単位で `KintoneClient` を分ける**想定。ゲストスペースは `guest_space_id` を指定 |
+| マルチテナント | **サブドメイン（ドメイン）単位で `KintoneRuntime` を分ける**想定。ゲストスペースは `guest_space_id` を指定 |
 
 その他の API（アプリ設定、スペース等）は今後の拡張対象です。
 
@@ -34,7 +34,7 @@ uv pip install git+https://github.com/yamaryu0508/kintone-python-runtime
 **PyPI** への公開は別途予定です。利用方法が固まり次第、`pip` / `uv add` 向けの記載を追加します。
 
 ```python
-from kintone_python_runtime import KintoneClient
+from kintone_python_runtime import KintoneRuntime
 ```
 
 ## 開発（リポジトリを clone した場合）
@@ -74,12 +74,12 @@ uv sync --extra dev --extra redis
 docker compose -f docker-compose.redis.yml up -d
 ```
 
-3. `KintoneClient` に `redis_url` を渡し、`RunSpec.backend` を `REDIS` に変更
+3. `KintoneRuntime` に `redis_url` を渡し、`RunSpec.backend` を `REDIS` に変更
 
 ```python
 from kintone_python_runtime import ExecutionBackend, RunSpec
 
-client = KintoneClient(
+runtime = KintoneRuntime(
     "https://YOUR_SUBDOMAIN.cybozu.com",
     auth=ApiTokenAuth(token="YOUR_API_TOKEN"),
     redis_url="redis://localhost:6379/0",
@@ -89,7 +89,7 @@ spec = RunSpec(
     backend=ExecutionBackend.REDIS,
     operations=[...],
 )
-run = client.run(spec)
+run = runtime.run(spec)
 ```
 
 4. 停止
@@ -136,7 +136,7 @@ docker compose -f docker-compose.redis.yml down -v
 推奨スタック:
 
 - Queue/Worker: `arq`
-- Redis client: `redis.asyncio`
+- Redis SDK: `redis.asyncio`
 - Event stream: Redis Streams
 
 ## テスト確認手順（まとめ）
@@ -168,7 +168,7 @@ import asyncio
 from kintone_python_runtime import (
     ApiTokenAuth,
     ExecutionBackend,
-    KintoneClient,
+    KintoneRuntime,
     RecordOperationSpec,
     RecordWriteMode,
     RunSpec,
@@ -176,7 +176,7 @@ from kintone_python_runtime import (
 
 
 async def main() -> None:
-    async with KintoneClient(
+    async with KintoneRuntime(
         "https://YOUR_SUBDOMAIN.cybozu.com",
         auth=ApiTokenAuth(token="YOUR_API_TOKEN"),
         rate_limit_per_second=5,
@@ -184,7 +184,7 @@ async def main() -> None:
         http2=True,
         state_dir=".kintone_runs",
         redis_url="redis://localhost:6379/0",  # local backendのみなら不要
-    ) as client:
+    ) as runtime:
         spec = RunSpec(
             backend=ExecutionBackend.LOCAL,  # REDIS に切替可能
             operations=[
@@ -202,7 +202,7 @@ async def main() -> None:
                 )
             ],
         )
-        run = client.run(spec)
+        run = runtime.run(spec)
         async for event in run.events():
             print(event.type, event.operation_index, event.chunk_index, event.error)
         summary = await run.wait()
@@ -217,8 +217,8 @@ asyncio.run(main())
 宣言的実行に加えて、従来型の低レイヤー API も利用できます。
 
 ```python
-page = await client.records.get_records(123, fields=["$id"])
-async for rec in client.records.iterate_records_by_id(123):
+page = await runtime.records.get_records(123, fields=["$id"])
+async for rec in runtime.records.iterate_records_by_id(123):
     ...
 ```
 
@@ -227,20 +227,20 @@ async for rec in client.records.iterate_records_by_id(123):
 ```python
 from pathlib import Path
 
-from kintone_python_runtime import ApiTokenAuth, KintoneClient
+from kintone_python_runtime import ApiTokenAuth, KintoneRuntime
 
 
-async def file_example(client: KintoneClient) -> None:
-    up = await client.files.upload(filename="note.txt", data=b"hello")
+async def file_example(runtime: KintoneRuntime) -> None:
+    up = await runtime.files.upload(filename="note.txt", data=b"hello")
     print(up.fileKey)
 
-    up2 = await client.files.upload_path(Path("./logo.png"))
+    up2 = await runtime.files.upload_path(Path("./logo.png"))
 
-    body = await client.files.download(up.fileKey)
+    body = await runtime.files.download(up.fileKey)
     print(len(body))
 ```
 
-ゲストスペース利用時は、レコードと同様に `KintoneClient(..., guest_space_id=...)` を指定すると、`/k/guest/{id}/v1/file.json` などが組み立てられます。
+ゲストスペース利用時は、レコードと同様に `KintoneRuntime(..., guest_space_id=...)` を指定すると、`/k/guest/{id}/v1/file.json` などが組み立てられます。
 
 ## リリース・バージョン
 

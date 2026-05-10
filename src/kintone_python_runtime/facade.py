@@ -12,14 +12,14 @@ from .version import __version__
 
 __all__ = [
     "ApiTokenAuth",
-    "KintoneClient",
+    "KintoneRuntime",
     "__version__",
 ]
 
 
-class KintoneClient:
+class KintoneRuntime:
     """
-    Async kintone REST API client (one instance per kintone domain / auth).
+    Async kintone runtime (one instance per kintone domain / auth).
 
     Resources: ``records`` (レコード API), ``files`` (ファイル API)。
     Use ``async with`` or call ``await aclose()`` when done.
@@ -70,7 +70,7 @@ class KintoneClient:
         if backend is not None:
             spec = spec.model_copy(update={"backend": backend})
         return spawn_run(
-            client=self,
+            runtime=self,
             spec=spec,
             state_dir=Path(self._state_dir),
             redis_url=self._redis_url,
@@ -79,7 +79,7 @@ class KintoneClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def __aenter__(self) -> KintoneClient:
+    async def __aenter__(self) -> KintoneRuntime:
         return self
 
     async def __aexit__(self, *_args: object) -> None:

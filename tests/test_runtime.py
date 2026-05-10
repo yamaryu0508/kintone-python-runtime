@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from kintone_python_runtime import ApiTokenAuth, KintoneClient
+from kintone_python_runtime import ApiTokenAuth, KintoneRuntime
 
 
 @pytest.mark.asyncio
@@ -11,8 +11,8 @@ async def test_default_user_agent_header():
         route = router.get("/k/v1/records.json").mock(
             return_value=httpx.Response(200, json={"records": []})
         )
-        async with KintoneClient("https://x.cybozu.com", auth=ApiTokenAuth(token="t")) as client:
-            await client.records.get_records(1)
+        async with KintoneRuntime("https://x.cybozu.com", auth=ApiTokenAuth(token="t")) as runtime:
+            await runtime.records.get_records(1)
     ua = route.calls.last.request.headers.get("User-Agent", "")
     assert "kintone_python_runtime" in ua
 
@@ -23,10 +23,10 @@ async def test_custom_user_agent_header():
         route = router.get("/k/v1/records.json").mock(
             return_value=httpx.Response(200, json={"records": []})
         )
-        async with KintoneClient(
+        async with KintoneRuntime(
             "https://x.cybozu.com",
             auth=ApiTokenAuth(token="t"),
             user_agent="custom-ua",
-        ) as client:
-            await client.records.get_records(1)
+        ) as runtime:
+            await runtime.records.get_records(1)
     assert route.calls.last.request.headers["User-Agent"] == "custom-ua"

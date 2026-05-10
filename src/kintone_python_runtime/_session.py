@@ -13,7 +13,7 @@ from ._urls import normalize_base_url
 
 
 class HttpSession:
-    """Per-tenant HTTP session: httpx client + concurrency + optional rate limit."""
+    """Per-tenant HTTP session: httpx transport + concurrency + optional rate limit."""
 
     def __init__(
         self,

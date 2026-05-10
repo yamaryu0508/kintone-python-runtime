@@ -1,6 +1,5 @@
 from .auth import ApiTokenAuth
 from .bulk import run_in_chunks
-from .client import KintoneClient
 from .declarative import (
     ExecutionBackend,
     RateLimitSpec,
@@ -11,6 +10,7 @@ from .declarative import (
     RunSummary,
 )
 from .errors import KintoneAPIError
+from .facade import KintoneRuntime
 from .models import (
     AddRecordResponse,
     AddRecordsResponse,
@@ -29,7 +29,7 @@ __all__ = [
     "ExecutionBackend",
     "GetRecordsResponse",
     "KintoneAPIError",
-    "KintoneClient",
+    "KintoneRuntime",
     "RateLimitSpec",
     "RecordOperationSpec",
     "RecordWriteMode",

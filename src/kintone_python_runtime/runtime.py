@@ -40,7 +40,7 @@ class RecordsAPI(Protocol):
     ) -> object: ...
 
 
-class ClientWithRecords(Protocol):
+class RuntimeWithRecords(Protocol):
     @property
     def records(self) -> RecordsAPI: ...
 
@@ -71,8 +71,8 @@ class RunHandle:
 
 
 class LocalRunner:
-    def __init__(self, client: ClientWithRecords, *, state_dir: Path) -> None:
-        self._client = client
+    def __init__(self, runtime: RuntimeWithRecords, *, state_dir: Path) -> None:
+        self._runtime = runtime
         self._state_dir = state_dir
         self._state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -205,11 +205,13 @@ class LocalRunner:
     ) -> None:
         try:
             if operation.mode is RecordWriteMode.INSERT:
-                await self._client.records.add_records(operation.app, chunk_records)
+                await self._runtime.records.add_records(operation.app, chunk_records)
             elif operation.mode is RecordWriteMode.UPDATE:
-                await self._client.records.update_records(operation.app, chunk_records)
+                await self._runtime.records.update_records(operation.app, chunk_records)
             else:
-                await self._client.records.update_records(operation.app, chunk_records, upsert=True)
+                await self._runtime.records.update_records(
+                    operation.app, chunk_records, upsert=True
+                )
 
             summary.succeeded_chunks += 1
             summary.succeeded_records += len(chunk_records)
@@ -310,13 +312,13 @@ class LocalRunner:
 class RedisRunner(LocalRunner):
     def __init__(
         self,
-        client: ClientWithRecords,
+        runtime: RuntimeWithRecords,
         *,
         state_dir: Path,
         redis_url: str,
         namespace: str = "krc",
     ) -> None:
-        super().__init__(client, state_dir=state_dir)
+        super().__init__(runtime, state_dir=state_dir)
         self._redis_url = redis_url
         self._namespace = namespace
 
@@ -355,30 +357,30 @@ class RedisRunner(LocalRunner):
 
 
 def create_runner(
-    client: ClientWithRecords,
+    runtime: RuntimeWithRecords,
     *,
     backend: ExecutionBackend,
     state_dir: Path,
     redis_url: str | None,
 ) -> DeclarativeRunner:
     if backend is ExecutionBackend.LOCAL:
-        return LocalRunner(client, state_dir=state_dir)
+        return LocalRunner(runtime, state_dir=state_dir)
     if redis_url is None:
         msg = "backend='redis' requires redis_url"
         raise ValueError(msg)
-    return RedisRunner(client, state_dir=state_dir, redis_url=redis_url)
+    return RedisRunner(runtime, state_dir=state_dir, redis_url=redis_url)
 
 
 def spawn_run(
     *,
-    client: ClientWithRecords,
+    runtime: RuntimeWithRecords,
     spec: RunSpec,
     state_dir: Path,
     redis_url: str | None,
 ) -> RunHandle:
     run_id = spec.resolved_run_id()
     send_stream, receive_stream = anyio.create_memory_object_stream[RunEvent](1024)
-    runner = create_runner(client, backend=spec.backend, state_dir=state_dir, redis_url=redis_url)
+    runner = create_runner(runtime, backend=spec.backend, state_dir=state_dir, redis_url=redis_url)
 
     async def emit(event: RunEvent) -> None:
         await send_stream.send(event)
